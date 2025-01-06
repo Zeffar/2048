@@ -52,28 +52,15 @@ struct node
     }
 };
 
-unordered_map<int, int> table_score = {
-    {1, 0},
-    {2, 4},
-    {3, 16},
-    {4, 48},
-    {5, 128},
-    {6, 320},
-    {7, 768},
-    {8, 1792},
-    {9, 4096},
-    {10, 9216},
-    {11, 20480},
-    {12, 45056},
-    {13, 98304}};
 
 void move_up(bool &ok, int a[4][4]);
 void move_right(bool &ok, int a[4][4]);
 void move_down(bool &ok, int a[4][4]);
 void move_left(bool &ok, int a[4][4]);
 int score(node *state);
-int simulate_random_play(node *node, int &root_move);
-// int simulate_random_play_movecount(node* node, int& root_move);  Plays for longer survival, not for better score, yields simmilar results.
+// int simulate_random_play(node *node, int &root_move);
+int simulate_random_play_movecount(node* node, int& root_move);  
+// Plays for longer survival, not for better score, yields simmilar results.
 // if you want to try it, change to this in MCTS() and uncomment the function;
 void generate_2(int board[4][4]);
 int MCTS(node *root);
@@ -133,7 +120,7 @@ int MCTS(node *root)
     for (int iterations = 0; iterations < runs; ++iterations)
     {
         int first_move = -1;
-        int result = simulate_random_play(root, first_move);
+        int result = simulate_random_play_movecount(root, first_move);
         scores[first_move] += result;
         visits[first_move] += 1;
     }
@@ -154,95 +141,95 @@ int MCTS(node *root)
     return move;
 }
 
-// int simulate_random_play_movecount(node* state, int& root_move) {
-//     node* new_state = new node(state->board, 0, 0, state);
-//     int moves = 0;
-//     int v[4] = {0, 1, 2, 3};
-//     sort(v, v+4, random_sort);
-//     while(true) {
-//         bool game_over = 1;
-//
-//
-//         for (int index = 0; index < 4; ++index) {
-//             bool legal_move = 0;
-//             int move = v[index];
-//             switch (move) {
-//                 case 0: move_up(legal_move, new_state->board); break;
-//                 case 1: move_right(legal_move, new_state->board); break;
-//                 case 2: move_down(legal_move, new_state->board); break;
-//                 case 3: move_left(legal_move, new_state->board); break;
-//             }
-//
-//             if(legal_move) {
-//                 generate_2(new_state->board);
-//                 if(root_move == -1) root_move = move;
-//                 moves++;
-//                 game_over = 0;
-//                 break;
-//             }
-//         }
-//
-//         if(game_over) return moves;
-//     }
-// }
-
-int simulate_random_play(node *state, int &root_move)
-{
-    node *new_state = new node(state->board, 0, 0, state);
-
+int simulate_random_play_movecount(node* state, int& root_move) {
+    node* new_state = new node(state->board, 0, 0, state);
+    int moves = 0;
     int v[4] = {0, 1, 2, 3};
-    while (true)
-    {
+    while(true) {
         bool game_over = 1;
+
         default_random_engine engine(rand());
         shuffle(begin(v), end(v), engine);
-        for (int index = 0; index < 4; ++index)
-        {
+        for (int index = 0; index < 4; ++index) {
             bool legal_move = 0;
             int move = v[index];
-            switch (move)
-            {
-            case 0:
-                move_up(legal_move, new_state->board);
-                break;
-            case 1:
-                move_right(legal_move, new_state->board);
-                break;
-            case 2:
-                move_down(legal_move, new_state->board);
-                break;
-            case 3:
-                move_left(legal_move, new_state->board);
-                break;
+            switch (move) {
+                case 0: move_up(legal_move, new_state->board); break;
+                case 1: move_right(legal_move, new_state->board); break;
+                case 2: move_down(legal_move, new_state->board); break;
+                case 3: move_left(legal_move, new_state->board); break;
             }
 
-            if (legal_move)
-            {
+            if(legal_move) {
                 generate_2(new_state->board);
-                if (root_move == -1)
-                    root_move = move;
+                if(root_move == -1) root_move = move;
+                moves++;
                 game_over = 0;
                 break;
             }
         }
 
-        if (game_over)
-        {
-            int final_score = score(new_state);
-            delete new_state;
-            return final_score;
-        }
+        if(game_over) return moves;
     }
 }
 
-int score(node *state)
-{
-    int evalScore = 0;
-    for (int i = 0; i < 4; ++i)
-        for (int j = 0; j < 4; ++j)
-            evalScore += table_score[state->board[i][j]];
-    return evalScore;
-}
+// int simulate_random_play(node *state, int &root_move)
+// {
+//     node *new_state = new node(state->board, 0, 0, state);
+
+//     int v[4] = {0, 1, 2, 3};
+//     while (true)
+//     {
+//         bool game_over = 1;
+//         default_random_engine engine(rand());
+//         shuffle(begin(v), end(v), engine);
+//         for (int index = 0; index < 4; ++index)
+//         {
+//             bool legal_move = 0;
+//             int move = v[index];
+//             switch (move)
+//             {
+//             case 0:
+//                 move_up(legal_move, new_state->board);
+//                 break;
+//             case 1:
+//                 move_right(legal_move, new_state->board);
+//                 break;
+//             case 2:
+//                 move_down(legal_move, new_state->board);
+//                 break;
+//             case 3:
+//                 move_left(legal_move, new_state->board);
+//                 break;
+//             }
+
+//             if (legal_move)
+//             {
+//                 generate_2(new_state->board);
+//                 if (root_move == -1)
+//                     root_move = move;
+//                 game_over = 0;
+//                 break;
+//             }
+//         }
+
+//         if (game_over)
+//         {
+//             int final_score = score(new_state);
+//             delete new_state;
+//             return final_score;
+//         }
+//     }
+// }
+
+// int score(node *state)
+// {
+//     int evalScore = 0;
+//     for (int i = 0; i < 4; ++i)
+//         for (int j = 0; j < 4; ++j)
+//             evalScore += table_score[state->board[i][j]];
+//     return evalScore;
+// }
 
 void generate_2(int board[4][4])
 {
