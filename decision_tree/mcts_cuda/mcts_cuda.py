@@ -532,7 +532,7 @@ def mcts_gpu(root_board, iterations=1000, c=1.41):
                 best_score = avg
                 best_move = child.move_from_parent
 
-    tree_visualization = visualize_tree(root, max_nodes=2000)
+    tree_visualization = visualize_tree(root, max_nodes=200)
     tree_visualization.render("decision_tree/mcts_cuda/mcts_tree.png", format="png", cleanup=True)  # Saves as 'mcts_tree.png'
     tree_visualization
     return best_move
