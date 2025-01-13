@@ -1,415 +1,212 @@
-// Attempt at making a decision tree using a pure MCTS approach.
-// The memory is dynamically allocated in this approach
 #include <fstream>
-#include <unordered_map>
 #include <vector>
-#include <cstring>
 #include <random>
-#include <cmath>
 #include <algorithm>
 #include <iostream>
-#include <cstdlib>
-#include <time.h>
+#include <cstring>
+#include <cmath>
+#include <ctime>
+
 using namespace std;
 
-struct node
-{
-    int board[4][4];
+struct Node {
+    int board[16]; // Flattened 4x4 board
     int parent_move;
     int score;
-    node *parent;
-    vector<node *> children;
     int visits;
     int moves;
     long long total_score;
-    // copy constructor
-    node(int a[4][4], int move, int evalScore, node *parent) : parent_move(move), score(evalScore),
-                                                               parent(nullptr), visits(0), moves(0), total_score(0)
-    {
 
-        for (int i = 0; i < 4; ++i)
-            for (int j = 0; j < 4; ++j)
-                this->board[i][j] = a[i][j];
-
-        this->parent = parent;
-    }
-
-    // default constructor
-    node() : parent_move(-1), score(0),
-             parent(nullptr), visits(0), moves(0), total_score(0)
-    {
-
-        for (int i = 0; i < 4; ++i)
-            for (int j = 0; j < 4; ++j)
-                this->board[i][j] = 0;
-    }
-
-    // deconstructor
-    ~node()
-    {
-        for (auto child : children)
-            delete child;
+    // Constructor
+    Node(int* a = nullptr, int move = -1) : parent_move(move), score(0), visits(0), moves(0), total_score(0) {
+        if (a) memcpy(this->board, a, sizeof(this->board));
+        else memset(this->board, 0, sizeof(this->board));
     }
 };
 
+void move_up(bool& ok, int* board);
+void move_down(bool& ok, int* board);
+void move_left(bool& ok, int* board);
+void move_right(bool& ok, int* board);
+void generate_2(int* board, mt19937& rng);
+int simulate_random_play(Node& state, int& root_move, mt19937& rng);
+int MCTS(Node& root, mt19937& rng);
 
-void move_up(bool &ok, int a[4][4]);
-void move_right(bool &ok, int a[4][4]);
-void move_down(bool &ok, int a[4][4]);
-void move_left(bool &ok, int a[4][4]);
-int score(node *state);
-// int simulate_random_play(node *node, int &root_move);
-int simulate_random_play_movecount(node* node, int& root_move);  
-// Plays for longer survival, not for better score, yields simmilar results.
-// if you want to try it, change to this in MCTS() and uncomment the function;
-void generate_2(int board[4][4]);
-int MCTS(node *root);
-void debug(node *state)
-{
-    for (int i = 0; i < 4; ++i)
-    {
-        for (int j = 0; j < 4; ++j)
-            if (state->board[i][j])
-                cout << (1 << state->board[i][j]) << " ";
-            else
-                cout << "0 ";
-        cout << endl;
-    }
-}
+int main() {
+    ifstream read_tree("decision_tree/tree.txt");
+    mt19937 rng(static_cast<unsigned>(time(nullptr))); // Efficient RNG seeded once
 
-int main()
-{
-
-    string file = "decision_tree/tree.txt";
-
-    ifstream read_tree(file);
-    srand(time(0));
-
-    node *root = new node();
-    for (int i = 0; i < 4; ++i)
-    {
-        for (int j = 0; j < 4; ++j)
-        {
-            int x;
-            read_tree >> x;
-            if (x)
-                root->board[i][j] = static_cast<int>(log2(x));
-        }
+    Node root;
+    for (int i = 0; i < 16; ++i) {
+        int x;
+        read_tree >> x;
+        root.board[i] = x ? static_cast<int>(log2(x)) : 0;
     }
 
-    cout << MCTS(root);
+    // clock_t start = clock();
+    cout << MCTS(root, rng) << endl;
+    // clock_t end = clock();
+    // double elapsed_secs = double(end - start) / CLOCKS_PER_SEC;
+    // cout << "Elapsed time: " << elapsed_secs << " seconds" << endl;
+    return 0;
 }
 
-int MCTS(node *root)
-{
-    int zerocount = 0;
-    for (int i = 0; i < 4; i++)
-        for (int j = 0; j < 4; j++)
-            if (root->board[i][j] == 0)
-                zerocount++;
-    int runs = 0;
-    if (zerocount > 7)
-        runs = 500;
-    else if (zerocount > 2)
-        runs = 1000;
-    else
-        runs = 2000;
+int MCTS(Node& root, mt19937& rng) {
+    int zerocount = count(begin(root.board), end(root.board), 0);
+    // int runs = zerocount > 7 ? 500 : (zerocount > 2 ? 1000 : 2000);
+    int runs = 2000;
 
     long long scores[4] = {0, 0, 0, 0};
     long long visits[4] = {0, 0, 0, 0};
-    for (int iterations = 0; iterations < runs; ++iterations)
-    {
-        int first_move = -1;
-        int result = simulate_random_play_movecount(root, first_move);
-        scores[first_move] += result;
-        visits[first_move] += 1;
-    }
 
-    int best_score = -1, move = -1;
-    for (int i = 0; i < 4; i++)
-    {
-        if (!visits[i])
-            continue;
-        long long final_score = (scores[i]) / (visits[i]);
-        if (final_score > best_score)
-        {
-            best_score = final_score;
-            move = i;
+    for (int iterations = 0; iterations < runs; ++iterations) {
+        int first_move = -1;
+        int result = simulate_random_play(root, first_move, rng);
+        if (first_move != -1) {
+            scores[first_move] += result;
+            visits[first_move]++;
         }
     }
 
+    int best_score = -1, move = -1;
+    for (int i = 0; i < 4; ++i) {
+        if (visits[i] > 0) {
+            long long avg_score = scores[i] / visits[i];
+            if (avg_score > best_score) {
+                best_score = avg_score;
+                move = i;
+            }
+        }
+    }
     return move;
 }
 
-int simulate_random_play_movecount(node* state, int& root_move) {
-    node* new_state = new node(state->board, 0, 0, state);
+int simulate_random_play(Node& state, int& root_move, mt19937& rng) {
+    Node new_state(state.board); // Reuse node
     int moves = 0;
-    int v[4] = {0, 1, 2, 3};
-    while(true) {
-        bool game_over = 1;
+    int directions[4] = {0, 1, 2, 3};
 
-        default_random_engine engine(rand());
-        shuffle(begin(v), end(v), engine);
-        for (int index = 0; index < 4; ++index) {
-            bool legal_move = 0;
-            int move = v[index];
+    while (true) {
+        bool game_over = true;
+        shuffle(begin(directions), end(directions), rng);
+
+        for (int move : directions) {
+            bool legal_move = false;
             switch (move) {
-                case 0: move_up(legal_move, new_state->board); break;
-                case 1: move_right(legal_move, new_state->board); break;
-                case 2: move_down(legal_move, new_state->board); break;
-                case 3: move_left(legal_move, new_state->board); break;
+                case 0: move_up(legal_move, new_state.board); break;
+                case 1: move_right(legal_move, new_state.board); break;
+                case 2: move_down(legal_move, new_state.board); break;
+                case 3: move_left(legal_move, new_state.board); break;
             }
 
-            if(legal_move) {
-                generate_2(new_state->board);
-                if(root_move == -1) root_move = move;
+            if (legal_move) {
+                generate_2(new_state.board, rng);
+                if (root_move == -1) root_move = move;
                 moves++;
-                game_over = 0;
+                game_over = false;
                 break;
             }
         }
 
-        if(game_over) return moves;
+        if (game_over) break;
+    }
+    return moves;
+}
+
+void generate_2(int* board, mt19937& rng) {
+    vector<int> empty_tiles;
+    for (int i = 0; i < 16; ++i)
+        if (board[i] == 0)
+            empty_tiles.push_back(i);
+
+    if (!empty_tiles.empty()) {
+        uniform_int_distribution<int> dist(0, empty_tiles.size() - 1);
+        board[empty_tiles[dist(rng)]] = 1;
     }
 }
 
-// int simulate_random_play(node *state, int &root_move)
-// {
-//     node *new_state = new node(state->board, 0, 0, state);
-
-//     int v[4] = {0, 1, 2, 3};
-//     while (true)
-//     {
-//         bool game_over = 1;
-//         default_random_engine engine(rand());
-//         shuffle(begin(v), end(v), engine);
-//         for (int index = 0; index < 4; ++index)
-//         {
-//             bool legal_move = 0;
-//             int move = v[index];
-//             switch (move)
-//             {
-//             case 0:
-//                 move_up(legal_move, new_state->board);
-//                 break;
-//             case 1:
-//                 move_right(legal_move, new_state->board);
-//                 break;
-//             case 2:
-//                 move_down(legal_move, new_state->board);
-//                 break;
-//             case 3:
-//                 move_left(legal_move, new_state->board);
-//                 break;
-//             }
-
-//             if (legal_move)
-//             {
-//                 generate_2(new_state->board);
-//                 if (root_move == -1)
-//                     root_move = move;
-//                 game_over = 0;
-//                 break;
-//             }
-//         }
-
-//         if (game_over)
-//         {
-//             int final_score = score(new_state);
-//             delete new_state;
-//             return final_score;
-//         }
-//     }
-// }
-
-// int score(node *state)
-// {
-//     int evalScore = 0;
-//     for (int i = 0; i < 4; ++i)
-//         for (int j = 0; j < 4; ++j)
-//             evalScore += table_score[state->board[i][j]];
-//     return evalScore;
-// }
-
-void generate_2(int board[4][4])
-{
-    // parse the board, find all places which are empty, choose randomly between them, insert a 2 in said place
-    int free_places[16], nr_places = 0, counter = 0;
-
-    for (int i = 0; i < 4; ++i)
-        for (int j = 0; j < 4; ++j)
-        {
-            if (board[i][j] == 0)
-            {
-                free_places[nr_places] = counter; // keep in a vector the indices of the free spaces, as if marking each square of the matrix ascendigly
-                nr_places++;                      // count free spaces found
-            }
-            counter++; // count at which square we are
-        }
-    int random = rand() % nr_places;                             // will give a random nr in range of the empty spaces
-    board[free_places[random] / 4][free_places[random] % 4] = 1; // said square will become 2
-}
-// move functions
-void move_left(bool &ok, int a[4][4])
-{
-    for (int i = 0; i < 4; i++)
-    {
-        int n = 0;
-        int prev = 0;
-        for (int j = 0; j < 4; j++)
-        {
-            if (n == a[i][j] && n != 0)
-            {
-                ok = 1;
-                a[i][prev] = n + 1;
-                a[i][j] = 0;
-                n = 0;
-                continue;
-            }
-            if (a[i][j] != 0)
-            {
-                n = a[i][j];
-                prev = j;
-            }
-        }
-    }
-    for (int i = 0; i < 4; i++)
-    {
-        for (int j = 0; j < 4; j++)
-        {
-            for (int k = 0; k < 3; k++)
-            {
-                if (a[i][k] == 0 && a[i][k + 1] != 0)
-                {
-                    ok = 1;
-                    a[i][k] = a[i][k] ^ a[i][k + 1];
-                    a[i][k + 1] = a[i][k] ^ a[i][k + 1];
-                    a[i][k] = a[i][k] ^ a[i][k + 1];
+void move_left(bool& ok, int* board) {
+    for (int i = 0; i < 4; ++i) {
+        int* row = board + i * 4;
+        int write_idx = 0, prev = -1;
+        for (int j = 0; j < 4; ++j) {
+            if (row[j] != 0) {
+                if (prev == row[j]) {
+                    row[write_idx - 1]++; // Merge tiles
+                    prev = -1;
+                    ok = true;
+                } else {
+                    if (j != write_idx) ok = true;
+                    row[write_idx++] = row[j];
+                    prev = row[j];
                 }
             }
         }
+        while (write_idx < 4) row[write_idx++] = 0;
     }
 }
 
-void move_right(bool &ok, int a[4][4])
-{
-    for (int i = 0; i < 4; i++)
-    {
-        int n = 0;
-        int prev = 0;
-        for (int j = 3; j >= 0; j--)
-        {
-            if (n == a[i][j] && n != 0)
-            {
-                ok = 1;
-                a[i][prev] = 1 + n;
-                a[i][j] = 0;
-                n = 0;
-                continue;
-            }
-            if (a[i][j] != 0)
-            {
-                n = a[i][j];
-                prev = j;
-            }
-        }
-    }
-    for (int i = 0; i < 4; i++)
-    {
-        for (int j = 0; j < 4; j++)
-        {
-            for (int k = 3; k > 0; k--)
-            {
-                if (a[i][k] == 0 && a[i][k - 1] != 0)
-                {
-                    ok = 1;
-                    a[i][k] = a[i][k] ^ a[i][k - 1];
-                    a[i][k - 1] = a[i][k] ^ a[i][k - 1];
-                    a[i][k] = a[i][k] ^ a[i][k - 1];
+void move_right(bool& ok, int* board) {
+    for (int i = 0; i < 4; ++i) {
+        int* row = board + i * 4;
+        int write_idx = 3, prev = -1;
+        for (int j = 3; j >= 0; --j) {
+            if (row[j] != 0) {
+                if (prev == row[j]) {
+                    row[write_idx + 1]++; // Merge tiles
+                    prev = -1;
+                    ok = true;
+                } else {
+                    if (j != write_idx) ok = true;
+                    row[write_idx--] = row[j];
+                    prev = row[j];
                 }
             }
         }
+        while (write_idx >= 0) row[write_idx--] = 0;
     }
 }
 
-void move_up(bool &ok, int a[4][4])
-{
-    for (int i = 0; i < 4; i++)
-    {
-        int n = 0;
-        int prev = 0;
-        for (int j = 0; j < 4; j++)
-        {
-            if (n == a[j][i] && n != 0)
-            {
-                ok = 1;
-                a[prev][i] = 1 + n;
-                a[j][i] = 0;
-                n = 0;
-                continue;
-            }
-            if (a[j][i] != 0)
-            {
-                n = a[j][i];
-                prev = j;
-            }
-        }
-    }
-    for (int i = 0; i < 4; i++)
-    {
-        for (int j = 0; j < 4; j++)
-        {
-            for (int k = 0; k < 3; k++)
-            {
-                if (a[k][i] == 0 && a[k + 1][i] != 0)
-                {
-                    ok = 1;
-                    a[k][i] = a[k][i] ^ a[k + 1][i];
-                    a[k + 1][i] = a[k][i] ^ a[k + 1][i];
-                    a[k][i] = a[k][i] ^ a[k + 1][i];
+void move_up(bool& ok, int* board) {
+    for (int col = 0; col < 4; ++col) {
+        int write_idx = 0, prev = -1;
+        for (int i = 0; i < 4; ++i) {
+            int& cell = board[i * 4 + col];
+            if (cell != 0) {
+                if (prev == cell) {
+                    board[(write_idx - 1) * 4 + col]++; // Merge tiles
+                    prev = -1;
+                    ok = true;
+                } else {
+                    if (i != write_idx) ok = true;
+                    board[write_idx * 4 + col] = cell;
+                    write_idx++;
+                    prev = cell;
                 }
             }
         }
+        while (write_idx < 4) board[write_idx++ * 4 + col] = 0;
     }
 }
 
-void move_down(bool &ok, int a[4][4])
-{
-    for (int i = 0; i < 4; i++)
-    {
-        int n = 0;
-        int prev = 0;
-        for (int j = 3; j >= 0; j--)
-        {
-            if (n == a[j][i] && n != 0)
-            {
-                ok = 1;
-                a[prev][i] = 1 + n;
-                a[j][i] = 0;
-                n = 0;
-                continue;
-            }
-            if (a[j][i] != 0)
-            {
-                n = a[j][i];
-                prev = j;
-            }
-        }
-    }
-    for (int i = 0; i < 4; i++)
-    {
-        for (int j = 0; j < 4; j++)
-        {
-            for (int k = 3; k > 0; k--)
-            {
-                if (a[k][i] == 0 && a[k - 1][i] != 0)
-                {
-                    ok = 1;
-                    a[k][i] = a[k][i] ^ a[k - 1][i];
-                    a[k - 1][i] = a[k][i] ^ a[k - 1][i];
-                    a[k][i] = a[k][i] ^ a[k - 1][i];
+void move_down(bool& ok, int* board) {
+    for (int col = 0; col < 4; ++col) {
+        int write_idx = 3, prev = -1;
+        for (int i = 3; i >= 0; --i) {
+            int& cell = board[i * 4 + col];
+            if (cell != 0) {
+                if (prev == cell) {
+                    board[(write_idx + 1) * 4 + col]++; // Merge tiles
+                    prev = -1;
+                    ok = true;
+                } else {
+                    if (i != write_idx) ok = true;
+                    board[write_idx * 4 + col] = cell;
+                    write_idx--;
+                    prev = cell;
                 }
             }
         }
+        while (write_idx >= 0) board[write_idx-- * 4 + col] = 0;
     }
 }
